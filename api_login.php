@@ -1,53 +1,42 @@
 <?php
-header('Access-Control-Allow-Origin: *');
-header('Access-Control-Allow-Headers: Content-Type');
-header('Content-Type: application/json; charset=utf-8');
+header('Content-Type: application/json');
 
-$host = "sql312.infinityfree.com";
-$usuario_db = "if0_43339706";
-$password_db = "LostAngel2499";
-$nombre_db = "if0_43339706_usuarios";
+// Recibir datos JSON de la app .NET MAUI
+$json = file_get_contents('php://input');
+$data = json_decode($json, true);
+
+$username = $data['username'] ?? '';
+$password = $data['password'] ?? '';
+
+if (empty($username) || empty($password)) {
+    echo json_encode(["status" => "error", "mensaje" => "Faltan datos de acceso."]);
+    exit;
+}
+
+// Datos de conexión de PostgreSQL en Render
+$host = "dpg-dbkl8q3ncjis73elbltg-a";
+$port = "5432";
+$dbname = "db_auditoria";
+$user = "db_auditoria_user";
+$password_db = "nTqU7Fpo6WVUKE1HAuMParlupKFUYPph";
 
 try {
-    $conexion = new PDO("mysql:host=$host;dbname=$nombre_db;charset=utf8", $usuario_db, $password_db);
-    $conexion->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+    // Conexión mediante PDO para PostgreSQL
+    $pdo = new PDO("pgsql:host=$host;port=$port;dbname=$dbname", $user, $password_db);
+    $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+
+    // Consultar el usuario en la base de datos
+    $stmt = $pdo->prepare("SELECT * FROM usuarios WHERE username = ?");
+    $stmt->execute([$username]);
+    $user_row = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    // Verificar contraseña cifrada
+    if ($user_row && password_verify($password, $user_row['password'])) {
+        echo json_encode(["status" => "success", "mensaje" => "Login exitoso"]);
+    } else {
+        echo json_encode(["status" => "error", "mensaje" => "Usuario o contraseña incorrectos."]);
+    }
 } catch (PDOException $e) {
-    echo json_encode(["status" => "error", "mensaje" => "Error de conexión al servidor"]);
-    exit();
-}
-
-$input = json_decode(file_get_contents('php://input'), true);
-$user = $input['username'] ?? '';
-$pass = $input['password'] ?? '';
-
-if (empty($user) || empty($pass)) {
-    echo json_encode(["status" => "error", "mensaje" => "Faltan datos obligatorios"]);
-    exit();
-}
-
-$stmt = $conexion->prepare("SELECT Id, Username, Password, NombreCompleto, Rol, activo FROM usuarios WHERE Username = :username");
-$stmt->execute(['username' => $user]);
-$usuarioData = $stmt->fetch(PDO::FETCH_ASSOC);
-
-if (!$usuarioData) {
-    echo json_encode(["status" => "error", "mensaje" => "Usuario no encontrado"]);
-    exit();
-}
-
-if ($usuarioData['activo'] == 0) {
-    echo json_encode(["status" => "bloqueado", "mensaje" => "Su cuenta ha sido desactivada."]);
-    exit();
-}
-
-if (password_verify($pass, $usuarioData['Password'])) {
-    echo json_encode([
-        "status" => "exito",
-        "mensaje" => "Inicio de sesión correcto",
-        "username" => $usuarioData['Username'],
-        "nombreCompleto" => $usuarioData['NombreCompleto'],
-        "rol" => $usuarioData['Rol']
-    ]);
-} else {
-    echo json_encode(["status" => "error", "mensaje" => "Contraseña incorrecta"]);
+    echo json_encode(["status" => "error", "mensaje" => "Error de conexión a la base de datos."]);
 }
 ?>
